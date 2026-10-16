@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yehia's Pizza - Meal Tracker & Admin Panel</title>
+<style>
+:root {
+--red: #e63946;
+--dark: #1d3557;
+--blue: #457b9d;
+--green: #2a9d8f;
+--bg: #f4f6f9;
+}
+body {
+font-family: 'Segoe UI', Tahoma, sans-serif;
+background-color: var(--bg);
+margin: 0;
+padding: 0;
+color: #222;
+}
+header {
+background-color: var(--red);
+color: white;
+padding: 15px 25px;
+display: flex;
+justify-content: space-between;
+align-items: center;
+box-shadow: 0 3px 10px rgba(0,0,0,0.15);
+}
+.status-badge {
+background: #1d3557;
+padding: 6px 12px;
+border-radius: 20px;
+font-size: 13px;
+font-weight: bold;
+}
+.main-grid {
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 20px;
+max-width: 1100px;
+margin: 25px auto;
+padding: 0 15px;
+}
+@media (max-width: 768px) {
+.main-grid { grid-template-columns: 1fr; }
+}
+.card {
+background: white;
+padding: 20px;
+border-radius: 12px;
+box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+}
+h2 {
+margin-top: 0;
+color: var(--dark);
+border-bottom: 2px solid #eee;
+padding-bottom: 10px;
+}
+label {
+display: block;
+font-weight: 600;
+margin-top: 12px;
+font-size: 14px;
+}
+input, select, button {
+width: 100%;
+padding: 10px;
+margin-top: 6px;
+border-radius: 6px;
+border: 1px solid #ccc;
+box-sizing: border-box;
+font-size: 14px;
+}
+button {
+background-color: var(--dark);
+color: white;
+border: none;
+font-weight: bold;
+cursor: pointer;
+margin-top: 15px;
+transition: transform 0.1s, opacity 0.2s;
+}
+button:hover { opacity: 0.92; }
+button:active { transform: scale(0.98); }
+.btn-red { background-color: var(--red); }
+.btn-green { background-color: var(--green); }
+.btn-blue { background-color: var(--blue); }
+
+.meal-item, .user-item {
+background: #f8f9fa;
+border-left: 5px solid var(--blue);
+padding: 12px;
+margin-top: 12px;
+border-radius: 6px;
+display: flex;
+justify-content: space-between;
+align-items: center;
+}
+.banned-user {
+border-left-color: var(--red);
+background: #fff5f5;
+}
+.step-controls button {
+width: auto;
+padding: 6px 10px;
+margin: 0 3px;
+font-size: 12px;
+}
+.progress-bar {
+font-size: 13px;
+color: var(--green);
+font-weight: bold;
+margin-top: 4px;
+}
+</style>
+</head>
+<body>
+
+<header>
+🍕 Yehia's Pizza — Meal Tracker & Admin
+<div class="status-badge" id="serverStatus">Connected: Render App
+</header>
+
+<div class="main-grid">
+
+<!-- LEFT SIDE: MEAL & ORDER TRACKER -->
+<div class="card">
+## 📦 Live Meal Tracker ##
+
+<label>Customer Username:</label>
+<input type="text" id="customerName" placeholder="e.g., Younes or Ahmed">
+
+<label>Select Meal / Pizza:</label>
+<select id="mealType">
+<option value="🧀 Margherita Pizza">🧀 Margherita Pizza</option>
+<option value="🍕 Pepperoni Feast">🍕 Pepperoni Feast</option>
+<option value="🍗 BBQ Chicken Pizza">🍗 BBQ Chicken Pizza</option>
+<option value="🍟 Pizza + Fries Combo">🍟 Pizza + Fries Combo</option>
+</select>
+
+<button class="btn-green" onclick="addMealOrder()">+ Add Meal to Tracker</button>
+
+<div id="mealList" style="margin-top: 20px;">
+
+<!-- RIGHT SIDE: ADMIN BAN PANEL -->
+<div class="card">
+## 🛡️ Admin Ban Control ##
+
+<label>Ban a Username from Ordering:</label>
+<input type="text" id="banInput" placeholder="Enter username to ban...">
+<button class="btn-red" onclick="banUserManual()">🚫 Ban User Now</button>
+
+<h3 style="margin-top: 25px; font-size: 16px;">Banned Users List:
+<div id="bannedList">
+
+<hr style="margin: 25px 0; border: none; border-top: 1px solid #eee;">
+
+<label>Live Website Preview / Connection:</label>
+<button class="btn-blue" onclick="pingRenderApp()">🔄 Sync with yehia-pizza-app-latest.onrender.com</button>
+<p id="syncMsg" style="font-size: 12px; color: #555; margin-top: 8px;">
+
+<script>
+const RENDER_URL = "https://yehia-pizza-app-latest.onrender.com";
+
+// Load saved meals and banned users so they never disappear on refresh
+let meals = JSON.parse(localStorage.getItem('yehia_meals')) || [
+{ id: 101, user: "Mostafa", item: "🍕 Pepperoni Feast", status: "🔥 Baking in Oven" }
+ ];
+let bannedUsers = JSON.parse(localStorage.getItem('yehia_banned')) || [];
+
+const stages = ["📝 Order Received", "👨‍🍳 Preparing Dough", "🔥 Baking in Oven", "🛵 Out for Delivery", "✅ Delivered!"];
+
+function saveData() {
+localStorage.setItem('yehia_meals', JSON.stringify(meals));
+localStorage.setItem('yehia_banned', JSON.stringify(bannedUsers));
+renderMeals();
+renderBanned();
+}
+
+// 1. Add a Meal (Checks if user is banned first!)
+function addMealOrder() {
+const user = document.getElementById('customerName').value.trim();
+const item = document.getElementById('mealType').value;
+
+if (!user) {
+alert("Please enter a customer name!");
+return;
+}
+
+// Check if the user is on the Ban List
+if (bannedUsers.includes(user.toLowerCase())) {
+alert(⛔ ACCESS DENIED: "${user}" is BANNED by Admin Yehia and cannot order meals!`);
+return;
+}
+
+const newMeal = {
+id: Math.floor(100 + Math.random() * 900),
+user: user,
+item: item,
+status: stages[0]
+};
+
+meals.unshift(newMeal);
+document.getElementById('customerName').value = "";
+saveData();
+}
+
+// 2. Move Meal to the Next Stage (Cooking -> Delivery -> Done)
+function nextStage(id) {
+const meal = meals.find(m => m.id === id);
+if (!meal) return;
+const currentIndex = stages.indexOf(meal.status);
+if (currentIndex < stages.length - 1) {
+meal.status = stages[currentIndex + 1];
+saveData();
+}
+}
+
+// 3. Delete / Complete Meal
+function removeMeal(id) {
+meals = meals.filter(m => m.id !== id);
+saveData();
+}
+
+// 4. Ban a User
+function banUserManual(nameFromOrder) {
+const input = document.getElementById('banInput');
+const target = (nameFromOrder || input.value).trim().toLowerCase();
+
+if (!target) return;
+
+if (!bannedUsers.includes(target)) {
+bannedUsers.push(target);
+// Also delete any active orders from this banned user
+meals = meals.filter(m => m.user.toLowerCase() !== target);
+input.value = "";
+saveData();
+}
+}
+
+// 5. Unban a User
+function unbanUser(name) {
+bannedUsers = bannedUsers.filter(u => u !== name);
+saveData();
+}
+
+// 6. Render Meals on Screen
+function renderMeals() {
+const list = document.getElementById('mealList');
+list.innerHTML = "";
+
+if (meals.length === 0) {
+list.innerHTML = "<p style='color:#777; font-size:14px;'>No active meals being tracked right now.";
+return;
+}
+
+meals.forEach(m => {
+const div = document.createElement('div');
+div.className = "meal-item";
+div.innerHTML = `
+
+<strong>#${m.id} — ${m.user}</strong> (${m.item}) &lt;div class="progress-bar"&gt;${m.status}
+
+<div class="step-controls">
+<button class="btn-green" onclick="nextStage(${m.id})"&gt;Next Step ⏩&lt;/button&gt; &lt;button class="btn-red" onclick="banUserManual('${m.user}')">Ban 🚫</button>
+<button onclick="removeMeal(`${m.id})">✖</button>
+
+`;
+list.appendChild(div);
+});
+}
+
+// 7. Render Banned Users on Screen
+function renderBanned() {
+const list = document.getElementById('bannedList');
+list.innerHTML = "";
+
+if (bannedUsers.length === 0) {
+list.innerHTML = "<p style='color:#777; font-size:14px;'>No banned users yet.";
+return;
+}
+
+bannedUsers.forEach(u => {
+const div = document.createElement('div');
+div.className = "user-item banned-user";
+div.innerHTML = &lt;span&gt;🚫 &lt;strong&gt;${u.toUpperCase()}</strong> (Blocked from ordering)</span>
+<div class="step-controls">
+<button class="btn-green" onclick="unbanUser('`${u}')">Unban ✅</button>
+
+`;
+list.appendChild(div);
+});
+}
+
+// 8. Connect / Sync with Render Server
+async function pingRenderApp() {
+const msg = document.getElementById('syncMsg');
+msg.textContent = "Connecting to https://yehia-pizza-app-latest.onrender.com ...";
+try {
+await fetch(RENDER_URL, { mode: 'no-cors' });
+msg.style.color = "green";
+msg.textContent = "✅ Connected! Render server is awake and synced with local tracker.";
+} catch (err) {
+msg.style.color = "red";
+msg.textContent = "⚠️ Server is waking up. Try clicking Sync again in 30 seconds.";
+}
+}
+
+// Start the app
+saveData();
+</script>
+
+</body>
+</html>
